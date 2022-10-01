@@ -1,4 +1,7 @@
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const { SECRET } = require("../config");
+
 const User = require("../models/Users.model");
 
 /**
@@ -47,6 +50,67 @@ const registrationAuth = async (userDetails, role, res) => {
   }
 };
 
+/**
+ * @DESC To login the user (SUPER_ADMIN, ADMIN, USER)
+ */
+
+const loginAuth = async (userCredentials, role, res) => {
+  let { username, password } = userCredentials;
+
+  // Check if the username is in the DB
+  const loggedInUser = await User.findOne({ username });
+  if (!loggedInUser) {
+    return res.status(404).json({
+      success: false,
+      message: `User not found!`,
+    });
+  }
+
+  // Check the role
+  if (loggedInUser.role !== role) {
+    return res.status(403).json({
+      success: false,
+      message: `Make sure you're logging in from the right portal.`,
+    });
+  }
+
+  // Check for the password
+  let isPasswordMatch = await bcrypt.compare(password, loggedInUser.password);
+  if (isPasswordMatch) {
+    // Sign in the token and issue it to the user
+    let token = jwt.sign(
+      {
+        user_id: loggedInUser._id,
+        username: loggedInUser.username,
+        email: loggedInUser.email,
+        role: loggedInUser.role,
+      },
+      SECRET,
+      {
+        expiresIn: "7 days",
+      }
+    );
+
+    let result = {
+      username: loggedInUser.username,
+      email: loggedInUser.email,
+      token: `Bearer #{token}`,
+      expiresIn: 168,
+    };
+
+    return res.status(200).json({
+      ...result,
+      success: true,
+      message: `Logged in successfully!`,
+    });
+  } else {
+    return res.status(403).json({
+      success: false,
+      message: `Invalid username or/and password`,
+    });
+  }
+};
+
 const validateUsername = async (username) => {
   let user = await User.findOne({ username });
   return user ? false : true;
@@ -57,4 +121,4 @@ const validateEmail = async (email) => {
   return user ? false : true;
 };
 
-module.exports = { registrationAuth };
+module.exports = { registrationAuth, loginAuth };
